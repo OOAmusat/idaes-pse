@@ -194,6 +194,17 @@ class TestGenericReactionParameterBlock(object):
             )
 
     @pytest.mark.unit
+    def test_packed_config_dict(self, m):
+        with pytest.raises(
+            ConfigurationError,
+            match=re.escape(
+                "rxn_params[property_package] was not assigned a property package. "
+                "Did you forget to unpack the configuration dictionary?"
+            ),
+        ):
+            m.rxn_params = GenericReactionParameterBlock({"property_package": m.params})
+
+    @pytest.mark.unit
     def test_rate_build_invalid_phase_stoichiometry(self, m):
         with pytest.raises(
             ConfigurationError,
@@ -638,8 +649,10 @@ class TestGenericReactionBlock(object):
         )
         assert value(model.rblock[1].equilibrium_constraint["e2"].body) == value(
             model.rblock[1].log_k_eq["e2"]
-            - model.sblock[1].log_mole_frac_phase_comp["p2", "c1"] * -5
-            + model.sblock[1].log_mole_frac_phase_comp["p2", "c2"] * 6
+            - (
+                model.sblock[1].log_mole_frac_phase_comp["p2", "c1"] * -5
+                + model.sblock[1].log_mole_frac_phase_comp["p2", "c2"] * 6
+            )
         )
 
     @pytest.mark.unit

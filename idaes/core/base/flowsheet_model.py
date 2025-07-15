@@ -74,9 +74,7 @@ class UI:
             self.visualize = self._visualize_null
             self.installed = False
         else:
-            # FIXME the explicit submodule import is needed because the idaes_ui doesn't import its fv submodule
-            # otherwise, you get "AttributeError: module 'idaes_ui' has no 'fv' attribute"
-            import idaes_ui.fv
+            import idaes_ui
 
             self.visualize = idaes_ui.fv.visualize
             self.installed = True
@@ -263,7 +261,7 @@ within this flowsheet if not otherwise specified,
             dict_arcs, time_point=time_point, orient=orient, true_state=true_state
         )
 
-    def visualize(self, model_name, **kwargs):
+    def visualize(self, model_name, **kwargs) -> "VisualizeResult":
         """
         Starts up a flask server that serializes the model and pops up a
         webpage with the visualization
@@ -275,9 +273,10 @@ within this flowsheet if not otherwise specified,
             **kwargs: Additional keywords for :func:`idaes.core.ui.fv.visualize()`
 
         Returns:
-            None
+            The :class:`idaes_ui.fv.fsvis.VisualizeResult` instance returned by :meth:`UI.visualize`
         """
-        UI().visualize(self, model_name, **kwargs)
+        visualize_result = UI().visualize(self, model_name, **kwargs)
+        return visualize_result
 
     def _get_stream_table_contents(self, time_point=0):
         """

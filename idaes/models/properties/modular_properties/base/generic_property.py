@@ -304,7 +304,8 @@ class GenericParameterData(PhysicalParameterBlock):
         # Add Phase objects
         if self.config.phases is None:
             raise ConfigurationError(
-                "{} was not provided with a phases argument.".format(self.name)
+                f"{self.name} was not provided with a phases argument. "
+                "Did you forget to unpack the configurations dictionary?"
             )
 
         # Add a flag indicating whether this is an electrolyte system or not
@@ -1223,7 +1224,7 @@ class ModularPropertiesInitializer(InitializerBase):
     CONFIG.declare(
         "solver",
         ConfigValue(
-            default=None,
+            default="ipopt_v2",
             description="Solver to use for initialization",
         ),
     )
@@ -1364,6 +1365,7 @@ class ModularPropertiesInitializer(InitializerBase):
 
         # If StateBlock has active constraints (i.e. has bubble, dew, or critical
         # point calculations), solve the block to converge these
+        solve_blocks = False
         for b in model.values():
             if number_activated_constraints(b) > 0:
                 if not degrees_of_freedom(b) == 0:
@@ -1372,8 +1374,10 @@ class ModularPropertiesInitializer(InitializerBase):
                         f"initialization at bubble, dew, and critical point step: "
                         f"{degrees_of_freedom(b)}."
                     )
-        with idaeslog.solver_log(solve_log, idaeslog.DEBUG) as slc:
-            solve_indexed_blocks(solver_obj, model, tee=slc.tee)
+                solve_blocks = True
+        if solve_blocks > 0:
+            with idaeslog.solver_log(solve_log, idaeslog.DEBUG) as slc:
+                solve_indexed_blocks(solver_obj, model, tee=slc.tee)
         init_log.info("Bubble, dew, and critical point initialization completed.")
 
         # ---------------------------------------------------------------------
@@ -1565,9 +1569,12 @@ class ModularPropertiesInitializer(InitializerBase):
                     f"{model.name} Unexpected degrees of freedom during "
                     f"initialization at phase equilibrium step: {dof}."
                 )
+            else:
+                result = None
             # Skip solve if DoF < 0 - this is probably due to a
             # phase-component flow state with flash
-
+        else:
+            result = None
         init_log.info("Property initialization routine finished.")
 
         return result
@@ -1578,6 +1585,8 @@ class _GenericStateBlock(StateBlock):
     This Class contains methods which should be applied to Property Blocks as a
     whole, rather than individual elements of indexed Property Blocks.
     """
+
+    default_initializer = ModularPropertiesInitializer
 
     def _return_component_list(self):
         # Overload the _return_component_list method to handle electrolyte
@@ -2077,6 +2086,8 @@ class GenericStateBlockData(StateBlockData):
 
     CONFIG = StateBlockData.CONFIG()
 
+    default_initializer = ModularPropertiesInitializer
+
     def build(self):
         super(GenericStateBlockData, self).build()
 
@@ -2104,6 +2115,15 @@ class GenericStateBlockData(StateBlockData):
         for p in self.phase_list:
             pobj = self.params.get_phase(p)
             pobj.config.equation_of_state.common(self, pobj)
+
+        # Check to see if state definition uses enthalpy
+        if self.is_property_constructed("enth_mol"):
+            # State definition uses enthalpy, need to add constraint on phase enthalpies
+            @self.Constraint(doc="Total molar enthalpy mixing rule")
+            def enth_mol_eqn(b):
+                return b.enth_mol == sum(
+                    b.enth_mol_phase[p] * b.phase_frac[p] for p in b.phase_list
+                )
 
         # Add phase equilibrium constraints if necessary
         if self.params.config.phases_in_equilibrium is not None and (
@@ -4471,7 +4491,7 @@ class GenericStateBlockData(StateBlockData):
         try:
             self.log_mole_frac_phase_comp = Var(
                 self.phase_component_set,
-                initialize=0,
+                initialize=-1,
                 bounds=(-100, log(1.001)),
                 units=pyunits.dimensionless,
                 doc="Log of mole fractions of component by phase",
@@ -4496,8 +4516,8 @@ class GenericStateBlockData(StateBlockData):
         try:
             self.log_mole_frac_phase_comp_apparent = Var(
                 self.params.apparent_phase_component_set,
-                initialize=0,
-                bounds=(-50, 0),
+                initialize=-1,
+                bounds=(-100, log(1.001)),
                 units=pyunits.dimensionless,
                 doc="Log of mole fractions of component by phase",
             )
@@ -4521,8 +4541,8 @@ class GenericStateBlockData(StateBlockData):
         try:
             self.log_mole_frac_phase_comp_true = Var(
                 self.params.true_phase_component_set,
-                initialize=0,
-                bounds=(-50, 0),
+                initialize=-1,
+                bounds=(-100, log(1.001)),
                 units=pyunits.dimensionless,
                 doc="Log of mole fractions of component by phase",
             )
